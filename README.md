@@ -18,5 +18,5 @@ https://localhost:8085/api/logout-callback
 
 as the front-channel logout URL.
 
-Also tick the "Id tokens" under "Implicit grant and hybrid flows".
+Also tick "Id tokens" under "Implicit grant and hybrid flows".
 

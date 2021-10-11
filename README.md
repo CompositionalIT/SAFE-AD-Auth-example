@@ -1,4 +1,4 @@
-SAFE Authentication with Active Directory.
+# SAFE Authentication with Active Directory.
 
 This shows how you can get everything set up including
 

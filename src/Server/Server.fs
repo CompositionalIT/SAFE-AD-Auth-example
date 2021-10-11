@@ -1,97 +1,123 @@
 module Server
 
-open FSharp.Control.Tasks
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
-open Microsoft.AspNetCore.Builder
-open Microsoft.Extensions.Configuration
-open Microsoft.Extensions.DependencyInjection
-open Microsoft.Identity.Web
 open Saturn
+open Microsoft.Identity.Web
 open Giraffe
-open Microsoft.AspNetCore.Http
-
 open Shared
-open Microsoft.Extensions.Hosting
 open System
+open Microsoft.Extensions.Hosting
+open Microsoft.AspNetCore.Http
+open FSharp.Control.Tasks
+open Microsoft.AspNetCore.Builder
+open Microsoft.Extensions.DependencyInjection
+open Microsoft.Extensions.Configuration
+open Microsoft.AspNetCore.Authentication
 
-type Storage () =
+type Environment with
+    static member IsDevelopmentEnvironment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") = Environments.Development
+
+
+type Storage() =
     let todos = ResizeArray<_>()
 
-    member __.GetTodos () =
-        List.ofSeq todos
+    member __.GetTodos() = List.ofSeq todos
 
-    member __.AddTodo (todo: Todo) =
+    member __.AddTodo(todo: Todo) =
         if Todo.isValid todo.Description then
             todos.Add todo
-            Ok ()
-        else Error "Invalid todo"
+            Ok()
+        else
+            Error "Invalid todo"
 
 let storage = Storage()
 
-storage.AddTodo(Todo.create "Create new SAFE project") |> ignore
-storage.AddTodo(Todo.create "Write your app") |> ignore
-storage.AddTodo(Todo.create "Ship it !!!") |> ignore
+storage.AddTodo(Todo.create "Create new SAFE project")
+|> ignore
 
-let todosApi ctx =
+storage.AddTodo(Todo.create "Write your app")
+|> ignore
+
+storage.AddTodo(Todo.create "Ship it !!!")
+|> ignore
+
+let todosApi =
     { getTodos = fun () -> async { return storage.GetTodos() }
       addTodo =
-        fun todo -> async {
-            match storage.AddTodo todo with
-            | Ok () -> return todo
-            | Error e -> return failwith e
-        } }
+          fun todo ->
+              async {
+                  match storage.AddTodo todo with
+                  | Ok () -> return todo
+                  | Error e -> return failwith e
+              } }
 
-let buildRemotingApi api next ctx = task {
-    let handler =
-        Remoting.createApi()
-        |> Remoting.withRouteBuilder Route.builder
-        |> Remoting.fromValue (api ctx)
-        |> Remoting.buildHttpHandler
-    return! handler next ctx }
+let webApp =
+    Remoting.createApi ()
+    |> Remoting.fromValue todosApi
+    |> Remoting.buildHttpHandler
 
 let authScheme = "AzureAD"
-let isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") = Environments.Development;
 
-let noAuthenticationRequired nxt ctx = task { return! nxt ctx }
+let logout (next : HttpFunc) (ctx : HttpContext) = task {
+    ctx.Response.Cookies.Delete(".AspNetCore.Cookies")
+    do! ctx.SignOutAsync()
+    return! next ctx
+}
+
+let noAuthenticationRequired (nxt : HttpFunc) (ctx : HttpContext) = task { return! nxt ctx }
 
 let requireLoggedIn : HttpFunc -> HttpContext -> HttpFuncResult =
-    //if isDevelopment then
-    //    noAuthenticationRequired
-    //else
-        requiresAuthentication (RequestErrors.UNAUTHORIZED authScheme "My Application" "You must be logged in.")
+    if Environment.IsDevelopmentEnvironment then
+        noAuthenticationRequired
+    else
+        requiresAuthentication (RequestErrors.UNAUTHORIZED authScheme "DanpowerMobile" "You must be logged in.")
 
 let authChallenge : HttpFunc -> HttpContext -> HttpFuncResult =
-    //if isDevelopment then
-    //    noAuthenticationRequired
-    //else
+    if Environment.IsDevelopmentEnvironment then
+        noAuthenticationRequired
+    else
         requiresAuthentication (Auth.challenge authScheme)
 
-let routes =
-    choose [
-        route "/" >=> authChallenge >=>  htmlFile "public/app.html"
-        subRoute "/api" (requireLoggedIn >=> buildRemotingApi todosApi)
-    ]
+let apiRouter = router {
+    pipe_through requireLoggedIn
+    pipe_through webApp
+}
+
+let appRouter = router {
+    pipe_through authChallenge
+    get "" (htmlFile "public/app.html")
+}
+
+let routes = router {
+    not_found_handler (RequestErrors.notFound (text "Not Found"))
+    forward "/api" apiRouter
+    forward "/" appRouter
+    get "/logout" logout
+}
+
+let configureHost (hostBuilder : IHostBuilder) =
+    hostBuilder
+
+let configureApp (app:IApplicationBuilder) =
+    app
+        .UseHsts() // See https://docs.microsoft.com/en-us/aspnet/core/security/enforcing-ssl?view=aspnetcore-3.1&tabs=visual-studio
+        .UseHttpsRedirection() // As above
+        .UseAuthentication()
 
 let configureServices (services : IServiceCollection) =
-
     let config = services.BuildServiceProvider().GetService<IConfiguration>()
-
     services
-        .AddMicrosoftIdentityWebAppAuthentication (config, openIdConnectScheme = authScheme)
+        .AddMicrosoftIdentityWebAppAuthentication(config, openIdConnectScheme = authScheme)
         |> ignore
 
     services
 
-let configureApp (app:IApplicationBuilder) =
-    app
-        .UseAuthentication()
-        .UseHsts()
-        .UseHttpsRedirection()
-
 let app =
     application {
         url "http://0.0.0.0:8085"
+        use_developer_exceptions
+        host_config configureHost
         service_config configureServices
         app_config configureApp
         use_router routes
@@ -100,4 +126,4 @@ let app =
         use_gzip
     }
 
-Application.run app
+run app

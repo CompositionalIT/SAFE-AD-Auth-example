@@ -4,22 +4,21 @@
 // In most cases, you'll only need to edit the CONFIG object (after dependencies)
 // See below if you need better fine-tuning of Webpack options
 
-// Dependencies. Also required: core-js, fable-loader, fable-compiler, @babel/core,
-// @babel/preset-env, babel-loader, sass, sass-loader, css-loader, style-loader, file-loader, resolve-url-loader
 var path = require('path');
 var webpack = require('webpack');
 var HtmlWebpackPlugin = require('html-webpack-plugin');
 var CopyWebpackPlugin = require('copy-webpack-plugin');
 var MiniCssExtractPlugin = require('mini-css-extract-plugin')
+
 // If we're running the webpack-dev-server, assume we're in development mode
 var isProduction = !process.argv.find(v => v.indexOf('webpack-dev-server') !== -1);
 
 var CONFIG = {
     // The tags to include the generated JS and CSS will be automatically injected in the HTML template
     // See https://github.com/jantimon/html-webpack-plugin
-    appHtmlTemplate: './src/Client/app.html',
-    fsharpEntry: './src/Client/Client.fsproj',
-    outputDir: isProduction ? './deploy/public' : './src/Server/public',
+    indexHtmlTemplate: './src/Client/app.html',
+    fsharpEntry: './src/Client/output/App.js',
+    outputDir: isProduction? './deploy/public' : './src/Server/public',
     assetsDir: './src/Client/public',
     devServerPort: 8080,
     // When using webpack-dev-server, you may need to redirect some calls
@@ -29,26 +28,14 @@ var CONFIG = {
         '**': {
             target: 'http://localhost:' + (process.env.SERVER_PROXY_PORT || "8085"),
             changeOrigin: true,
-            ws: false
-        },
+            ws:false
+           },
         // redirect websocket requests that start with /socket/ to the server on the port 8085
         '/socket/**': {
             target: 'http://localhost:' + (process.env.SERVER_PROXY_PORT || "8085"),
             ws: true
-        }
-    },
-    babel: {
-        presets: [
-            ['@babel/preset-env', {
-                modules: false,
-                // This adds polyfills when needed. Requires core-js dependency.
-                // See https://babeljs.io/docs/en/babel-preset-env#usebuiltins
-                // Note that you still need to add custom polyfills if necessary (e.g. whatwg-fetch)
-                useBuiltIns: 'usage',
-                corejs: 3
-            }]
-        ],
-    }
+           }
+       }
 }
 
 var environment = isProduction ? 'production' : 'development';
@@ -60,7 +47,7 @@ console.log('Bundling for ' + environment + '...');
 var commonPlugins = [
     new HtmlWebpackPlugin({
         filename: 'app.html',
-        template: resolve(CONFIG.appHtmlTemplate)
+        template: resolve(CONFIG.indexHtmlTemplate)
     })
 ];
 
@@ -95,7 +82,7 @@ module.exports = {
     plugins: isProduction ?
         commonPlugins.concat([
             new MiniCssExtractPlugin({ filename: 'style.[name].[hash].css' }),
-            new CopyWebpackPlugin({ patterns: [{ from: resolve(CONFIG.assetsDir) }] }),
+            new CopyWebpackPlugin({ patterns: [{ from: resolve(CONFIG.assetsDir) }]}),
         ])
         : commonPlugins.concat([
             new webpack.HotModuleReplacementPlugin(),
@@ -115,29 +102,10 @@ module.exports = {
         inline: true,
         writeToDisk: true
     },
-    // - fable-loader: transforms F# into JS
-    // - babel-loader: transforms JS to old syntax (compatible with old browsers)
     // - sass-loaders: transforms SASS/SCSS into JS
     // - file-loader: Moves files referenced in the code (fonts, images) into output folder
     module: {
         rules: [
-            {
-                test: /\.fs(x|proj)?$/,
-                use: {
-                    loader: 'fable-loader',
-                    options: {
-                        babel: CONFIG.babel
-                    }
-                }
-            },
-            {
-                test: /\.js$/,
-                exclude: /node_modules/,
-                use: {
-                    loader: 'babel-loader',
-                    options: CONFIG.babel
-                },
-            },
             {
                 test: /\.(sass|scss|css)$/,
                 use: [
@@ -154,6 +122,11 @@ module.exports = {
             {
                 test: /\.(png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot)(\?.*)?$/,
                 use: ['file-loader']
+            },
+            {
+                test: /\.js$/,
+                enforce: "pre",
+                use: ['source-map-loader'],
             }
         ]
     }

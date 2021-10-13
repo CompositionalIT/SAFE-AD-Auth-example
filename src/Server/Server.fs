@@ -71,7 +71,7 @@ let requireLoggedIn : HttpFunc -> HttpContext -> HttpFuncResult =
     if Environment.IsDevelopmentEnvironment then
         noAuthenticationRequired
     else
-        requiresAuthentication (RequestErrors.UNAUTHORIZED authScheme "DanpowerMobile" "You must be logged in.")
+        requiresAuthentication (RequestErrors.UNAUTHORIZED authScheme "Compositional IT" "You must be logged in.")
 
 let authChallenge : HttpFunc -> HttpContext -> HttpFuncResult =
     if Environment.IsDevelopmentEnvironment then
